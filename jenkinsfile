@@ -1,0 +1,44 @@
+pipeline {
+    agent {
+        docker {
+            image 'node:16' // Use Node 16 Docker image as the build agent
+            args '-p 3000:3000'
+        }
+    }
+    stages {
+        stage('Build') {
+            steps {
+                sh 'npm install --save' // Install dependencies using npm install --save
+            }
+        }
+        stage('Test') {
+            steps {
+                sh 'npm test'
+            }
+        }
+        stage('Security Scan') {
+            steps {
+                script {
+                    def snykInstallation = tool 'snyk'
+                    withEnv(["PATH+SNYK=${snykInstallation}/bin"]) {
+                        try {
+                            sh 'snyk auth $SNYK_TOKEN'
+                            sh 'snyk test --severity-threshold=high'
+                        } catch (err) {
+                            echo "Snyk Security Scan Failed: ${err}"
+                            currentBuild.result = 'FAILURE'
+                            error("Vulnerability Check Failed")
+                        }
+                    }
+                }
+            }
+        }
+        stage('Deliver') {
+            steps {
+                sh './jenkins/scripts/deliver.sh'
+                input message: 'Finished using the web site? (Click "Proceed" to continue)'
+                sh './jenkins/scripts/kill.sh'
+            }
+        }
+    }
+}
